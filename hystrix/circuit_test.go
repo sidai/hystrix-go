@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/smartystreets/goconvey/convey"
 	"math/rand"
 	"testing/quick"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestGetCircuit(t *testing.T) {
