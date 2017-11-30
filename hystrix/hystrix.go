@@ -23,7 +23,7 @@ func (e CircuitError) Error() string {
 // command models the state used for a single execution on a circuit. "hystrix command" is commonly
 // used to describe the pairing of your run/fallback functions with a circuit.
 type command struct {
-	sync.RWMutex
+	mu sync.RWMutex
 
 	ticket         *struct{}
 	overflowTicket *struct{}
@@ -64,7 +64,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		finished:      make(chan bool, 1),
 		fallbackOnce:  &sync.Once{},
 		timeoutChan:   make(chan struct{}, 1),
-		ticketChecked: make(chan struct{}, 1),
+		ticketChecked: make(chan struct{}),
 	}
 
 	// dont have methods with explicit params and returns
@@ -119,8 +119,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 				// return the ticket right away as it is not required
 				cmd.circuit.executorPool.ReturnWaitingTicket(cmd.overflowTicket)
 				cmd.setTicket(executionTicket)
-				isOpen := circuit.IsOpen()
-				if isOpen {
+				if circuit.IsOpen() {
 					cmd.errorWithFallback(ErrCircuitOpen)
 					close(cmd.ticketChecked)
 					return
@@ -137,25 +136,28 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		runStart := time.Now()
 		runErr := run()
 
-		if !cmd.isTimedOut() {
-			cmd.setRunDuration(time.Since(runStart))
-
-			if runErr != nil {
-				cmd.errorWithFallback(runErr)
-				return
-			}
-
-			cmd.reportEvent("success")
+		if cmd.isTimedOut() {
+			return
 		}
+
+		cmd.setRunDuration(time.Since(runStart))
+
+		if runErr != nil {
+			cmd.errorWithFallback(runErr)
+			return
+		}
+
+		cmd.reportEvent("success")
 	}()
 
 	go func() {
 		defer func() {
 			<-cmd.ticketChecked
-			cmd.Lock()
+
+			cmd.mu.Lock()
 			cmd.circuit.executorPool.Return(cmd.ticket)
 			copyEvents := append([]string(nil), cmd.events...)
-			cmd.Unlock()
+			cmd.mu.Unlock()
 
 			err := cmd.circuit.ReportEvent(copyEvents, cmd.start, cmd.getRunDuration())
 			if err != nil {
@@ -170,17 +172,19 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		case <-cmd.finished:
 		case <-timer.C:
 			close(cmd.timeoutChan)
-			// mark as timeout only if the reason is timeout, if the job was in overflowQueue mark it as MaxConcurrency
-			if cmd.getOverflowTicket() == nil {
-				cmd.Lock()
-				cmd.timedOut = true
-				cmd.Unlock()
-				cmd.errorWithFallback(ErrTimeout)
-			} else {
-				// even if the execution was waiting in queue and then timed-out while executing, mark it as ErrMaxConcurrency
+			// mark as timeout only if the reason is timeout,
+			// if the job was in overflowQueue mark it as MaxConcurrency
+			if cmd.hasOverflowTicket() {
+				// even if the execution was waiting in queue and then timed-out while executing,
+				// mark it as ErrMaxConcurrency
 				cmd.errorWithFallback(ErrMaxConcurrency)
+				return
 			}
-			return
+
+			cmd.mu.Lock()
+			cmd.timedOut = true
+			cmd.mu.Unlock()
+			cmd.errorWithFallback(ErrTimeout)
 		}
 	}()
 
@@ -228,15 +232,15 @@ func Do(name string, run runFunc, fallback fallbackFunc) error {
 }
 
 func (c *command) reportEvent(eventType string) {
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.events = append(c.events, eventType)
 }
 
 func (c *command) isTimedOut() bool {
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	return c.timedOut
 }
@@ -280,40 +284,37 @@ func (c *command) tryFallback(err error) error {
 	return nil
 }
 
-func (c *command) getTicket() *struct{} {
-	c.RLock()
-	defer c.RUnlock()
-
-	return c.ticket
-}
 func (c *command) setTicket(t *struct{}) {
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.ticket = t
 }
-func (c *command) getOverflowTicket() *struct{} {
-	c.RLock()
-	defer c.RUnlock()
 
-	return c.overflowTicket
+func (c *command) hasOverflowTicket() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.overflowTicket != nil
 }
 
 func (c *command) setOverflowTicket(t *struct{}) {
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	c.overflowTicket = t
 }
 
 func (c *command) setRunDuration(duration time.Duration) {
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.runDuration = duration
 }
 
 func (c *command) getRunDuration() time.Duration {
-	c.RLock()
-	defer c.RUnlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.runDuration
 }
