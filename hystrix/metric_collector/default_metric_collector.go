@@ -30,6 +30,7 @@ type DefaultMetricCollector struct {
 	fallbackFailures  *rolling.Number
 	totalDuration     *rolling.Timing
 	runDuration       *rolling.Timing
+	concurrencyInUse  *rolling.Number
 }
 
 func newDefaultMetricCollector(name string, commandGroup string) MetricCollector {
@@ -216,6 +217,13 @@ func (d *DefaultMetricCollector) UpdateRunDuration(runDuration time.Duration) {
 	d.runDuration.Add(runDuration)
 }
 
+// UpdateConcurrencyInUse updates concurrency in use.
+func (d *DefaultMetricCollector) UpdateConcurrencyInUse(concurrencyInUse float64) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+	d.concurrencyInUse.UpdateMax(100 * concurrencyInUse)
+}
+
 // Reset resets all metrics in this collector to 0.
 func (d *DefaultMetricCollector) Reset() {
 	d.mutex.Lock()
@@ -233,4 +241,5 @@ func (d *DefaultMetricCollector) Reset() {
 	d.fallbackFailures = rolling.NewNumber()
 	d.totalDuration = rolling.NewTiming()
 	d.runDuration = rolling.NewTiming()
+	d.concurrencyInUse = rolling.NewNumber()
 }

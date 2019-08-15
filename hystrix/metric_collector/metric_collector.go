@@ -69,6 +69,8 @@ type MetricCollector interface {
 	UpdateTotalDuration(timeSinceStart time.Duration)
 	// UpdateRunDuration updates the internal counter of how long the last run took.
 	UpdateRunDuration(runDuration time.Duration)
+	// UpdateConcurrencyInUse updates concurrency in use.
+	UpdateConcurrencyInUse(concurrencyInUse float64)
 	// Reset resets the internal counters and timers.
 	Reset()
 }

@@ -13,6 +13,7 @@ import (
 
 var makeTimerFunc = func() interface{} { return metrics.NewTimer() }
 var makeCounterFunc = func() interface{} { return metrics.NewCounter() }
+var makeGaugeFunc = func() interface{} { return metrics.NewGauge() }
 
 // GraphiteCollector fulfills the metricCollector interface allowing users to ship circuit
 // stats to a graphite backend. To use users must call InitializeGraphiteCollector before
@@ -33,6 +34,7 @@ type GraphiteCollector struct {
 	fallbackFailuresPrefix  string
 	totalDurationPrefix     string
 	runDurationPrefix       string
+	concurrencyInUsePrefix  string
 }
 
 // GraphiteCollectorConfig provides configuration that the graphite client will need.
@@ -71,6 +73,7 @@ func NewGraphiteCollector(name string, commandGroup string) metricCollector.Metr
 		fallbackFailuresPrefix:  commandGroup + "." + name + ".fallbackFailures",
 		totalDurationPrefix:     commandGroup + "." + name + ".totalDuration",
 		runDurationPrefix:       commandGroup + "." + name + ".runDuration",
+		concurrencyInUsePrefix:  commandGroup + "." + name + ".concurrencyInUse",
 	}
 }
 
@@ -80,6 +83,14 @@ func (g *GraphiteCollector) incrementCounterMetric(prefix string) {
 		return
 	}
 	c.Inc(1)
+}
+
+func (g *GraphiteCollector) updateGaugeMetric(prefix string, value int64) {
+	c, ok := metrics.GetOrRegister(prefix, makeGaugeFunc).(metrics.Gauge)
+	if !ok {
+		return
+	}
+	c.Update(value)
 }
 
 func (g *GraphiteCollector) updateTimerMetric(prefix string, dur time.Duration) {
@@ -164,6 +175,11 @@ func (g *GraphiteCollector) UpdateTotalDuration(timeSinceStart time.Duration) {
 // This registers as a timer in the graphite collector.
 func (g *GraphiteCollector) UpdateRunDuration(runDuration time.Duration) {
 	g.updateTimerMetric(g.runDurationPrefix, runDuration)
+}
+
+// UpdateConcurrencyInUse updates concurrency in use.
+func (g *GraphiteCollector) UpdateConcurrencyInUse(concurrencyInUse float64) {
+	g.updateGaugeMetric(g.concurrencyInUsePrefix, int64(100*concurrencyInUse))
 }
 
 // Reset is a noop operation in this collector.

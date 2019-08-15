@@ -29,6 +29,7 @@ type StatsdCollector struct {
 	fallbackFailuresPrefix  string
 	totalDurationPrefix     string
 	runDurationPrefix       string
+	concurrencyInUsePrefix  string
 	sampleRate              float32
 }
 
@@ -107,6 +108,7 @@ func (s *StatsdCollectorClient) NewStatsdCollector(name string, commandGroup str
 		fallbackFailuresPrefix:  commandGroup + "." + name + ".fallbackFailures",
 		totalDurationPrefix:     commandGroup + "." + name + ".totalDuration",
 		runDurationPrefix:       commandGroup + "." + name + ".runDuration",
+		concurrencyInUsePrefix:  commandGroup + "." + name + ".concurrencyInUse",
 		sampleRate:              s.sampleRate,
 	}
 }
@@ -134,6 +136,13 @@ func (g *StatsdCollector) incrementCounterMetric(prefix string) {
 
 func (g *StatsdCollector) updateTimerMetric(prefix string, dur time.Duration) {
 	err := g.client.TimingDuration(prefix, dur, g.sampleRate)
+	if err != nil {
+		log.Printf("Error sending statsd metrics %s", prefix)
+	}
+}
+
+func (g *StatsdCollector) updateTimingMetric(prefix string, i int64) {
+	err := g.client.Timing(prefix, i, g.sampleRate)
 	if err != nil {
 		log.Printf("Error sending statsd metrics %s", prefix)
 	}
@@ -215,6 +224,11 @@ func (g *StatsdCollector) UpdateTotalDuration(timeSinceStart time.Duration) {
 // This registers as a timer in the Statsd collector.
 func (g *StatsdCollector) UpdateRunDuration(runDuration time.Duration) {
 	g.updateTimerMetric(g.runDurationPrefix, runDuration)
+}
+
+// UpdateConcurrencyInUse updates concurrency in use.
+func (g *StatsdCollector) UpdateConcurrencyInUse(concurrencyInUse float64) {
+	g.updateTimingMetric(g.concurrencyInUsePrefix, int64(100*concurrencyInUse))
 }
 
 // Reset is a noop operation in this collector.

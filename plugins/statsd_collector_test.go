@@ -1,9 +1,8 @@
 package plugins
 
 import (
-	"testing"
-
 	"sync/atomic"
+	"testing"
 
 	"github.com/myteksi/hystrix-go/plugins/mocks"
 	. "github.com/smartystreets/goconvey/convey"
@@ -52,12 +51,16 @@ func TestCommandGroup(t *testing.T) {
 	queueLength1 := int32(0)
 	attempt1 := int32(0)
 	queueLength2 := int32(0)
+	concurrencyInUse := int64(0)
 
 	mockStatsd1.On("Inc", "commandGroup1.commandName1.queueLength", int64(1), mock.Anything).Run(func(args mock.Arguments) {
 		atomic.AddInt32(&queueLength1, 1)
 	}).Return(nil)
 	mockStatsd1.On("Inc", "commandGroup1.commandName1.attempts", int64(1), mock.Anything).Run(func(args mock.Arguments) {
 		atomic.AddInt32(&attempt1, 1)
+	}).Return(nil)
+	mockStatsd1.On("Timing", "commandGroup1.commandName1.concurrencyInUse", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		concurrencyInUse = args[1].(int64)
 	}).Return(nil)
 	mockStatsd2.On("Inc", "commandGroup2.commandName2.queueLength", int64(1), mock.Anything).Run(func(args mock.Arguments) {
 		atomic.AddInt32(&queueLength2, 1)
@@ -68,10 +71,12 @@ func TestCommandGroup(t *testing.T) {
 		metricCollector1.IncrementAttempts()
 		metricCollector1.IncrementQueueSize()
 		metricCollector2.IncrementQueueSize()
+		metricCollector1.UpdateConcurrencyInUse(0.12)
 
 		So(2, ShouldEqual, attempt1)
 		So(1, ShouldEqual, queueLength1)
 		So(1, ShouldEqual, queueLength2)
+		So(12, ShouldEqual, concurrencyInUse)
 	})
 
 }

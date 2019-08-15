@@ -28,6 +28,7 @@ const (
 	dmFallbackFailures  = "hystrix.fallbackFailures"
 	dmTotalDuration     = "hystrix.totalDuration"
 	dmRunDuration       = "hystrix.runDuration"
+	dmConcurrencyInUse  = "hystrix.concurrencyInUse"
 )
 
 type (
@@ -189,6 +190,11 @@ func (dc *DatadogCollector) UpdateTotalDuration(timeSinceStart time.Duration) {
 func (dc *DatadogCollector) UpdateRunDuration(runDuration time.Duration) {
 	ms := float64(runDuration.Nanoseconds() / 1000000)
 	_ = dc.client.TimeInMilliseconds(dmRunDuration, ms, dc.tags, 1.0)
+}
+
+// UpdateConcurrencyInUse updates concurrency in use.
+func (dc *DatadogCollector) UpdateConcurrencyInUse(concurrencyInUse float64) {
+	_ = dc.client.Gauge(dmConcurrencyInUse, 100*concurrencyInUse, dc.tags, 1.0)
 }
 
 // Reset is a noop operation in this collector.
