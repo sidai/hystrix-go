@@ -86,7 +86,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 		// Circuits get opened when recent executions have shown to have a high error rate.
 		// Rejecting new executions allows backends to recover, and the circuit will allow
 		// new traffic when it feels a healthly state has returned.
-		if !cmd.circuit.AllowRequest() {
+		if !cmd.circuit.attemptExecution() {
 			cmd.errorWithFallback(ErrCircuitOpen)
 			close(cmd.ticketChecked)
 			return

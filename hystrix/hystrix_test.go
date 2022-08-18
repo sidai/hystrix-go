@@ -2,10 +2,9 @@ package hystrix
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"sync/atomic"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -697,6 +696,41 @@ func TestSuccessExecutionDueToQueue(t *testing.T) {
 			So(timeoutErr, ShouldEqual, 0)
 			So(maxConcurrencyErr, ShouldEqual, 0)
 
+		})
+	})
+}
+
+func TestAllowRequestBeforeDo(t *testing.T) {
+	Convey("when a circuit is open", t, func() {
+		defer Flush()
+		cb, _, err := GetCircuit("")
+		So(err, ShouldEqual, nil)
+
+		cb.setOpen()
+
+		Convey("allow request should be false", func() {
+			allowed := cb.AllowRequest()
+			So(allowed, ShouldEqual, false)
+		})
+
+		Convey("allow request should be true after sleep window and let through next Do command", func() {
+			time.Sleep(6 * time.Second)
+
+			allowed := cb.AllowRequest()
+			So(allowed, ShouldEqual, true)
+
+			done := make(chan bool, 1)
+			err := Do("", func() error {
+				done <- true
+				return nil
+			}, nil)
+			So(err, ShouldBeNil)
+
+			Convey("the circuit should be closed", func() {
+				So(<-done, ShouldEqual, true)
+				time.Sleep(10 * time.Millisecond)
+				So(cb.IsOpen(), ShouldEqual, false)
+			})
 		})
 	})
 }

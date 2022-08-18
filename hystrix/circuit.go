@@ -119,10 +119,26 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 // When the circuit is open, this call will occasionally return true to measure whether the external service
 // has recovered.
 func (circuit *CircuitBreaker) AllowRequest() bool {
-	return !circuit.IsOpen() || circuit.allowSingleTest()
+	if !circuit.IsOpen() {
+		return true
+	}
+
+	circuit.mutex.RLock()
+	defer circuit.mutex.RUnlock()
+
+	now := time.Now().UnixNano()
+	openedOrLastTestedTime := atomic.LoadInt64(&circuit.openedOrLastTestedTime)
+
+	return circuit.open && now > openedOrLastTestedTime+getSettings(circuit.Name).SleepWindow.Nanoseconds()
 }
 
-func (circuit *CircuitBreaker) allowSingleTest() bool {
+// attemptExecution is similar to AllowRequest, but it performs a CAS on the openedOrLastTestedTime to ensure
+// only the first attempt after SleepWindow is let through.
+func (circuit *CircuitBreaker) attemptExecution() bool {
+	if !circuit.IsOpen() {
+		return true
+	}
+
 	circuit.mutex.RLock()
 	defer circuit.mutex.RUnlock()
 
