@@ -54,6 +54,18 @@ func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 	return circuitBreakers[name], !ok, nil
 }
 
+// RemoveCircuit purges the given circuit from memory.
+func RemoveCircuit(name string) {
+	circuitBreakersMutex.Lock()
+	defer circuitBreakersMutex.Unlock()
+
+	if cb, ok := circuitBreakers[name]; ok {
+		cb.metrics.Reset()
+		cb.executorPool.Metrics.Reset()
+		delete(circuitBreakers, name)
+	}
+}
+
 // Flush purges all circuit and metric information from memory.
 func Flush() {
 	circuitBreakersMutex.Lock()

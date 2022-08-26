@@ -1,13 +1,12 @@
 package hystrix
 
 import (
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
-
-	"math/rand"
 	"testing/quick"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 )
@@ -29,6 +28,34 @@ func TestGetCircuit(t *testing.T) {
 			_, created, err = GetCircuit("foo")
 			So(err, ShouldBeNil)
 			So(created, ShouldEqual, false)
+		})
+	})
+}
+
+func TestRemoveCircuit(t *testing.T) {
+	defer Flush()
+
+	Convey("when calling GetCircuit", t, func() {
+		var created bool
+		var err error
+		_, created, err = GetCircuit("foo")
+
+		Convey("once, the circuit should be created", func() {
+			So(err, ShouldBeNil)
+			So(created, ShouldEqual, true)
+		})
+
+		Convey("twice, the circuit should be reused", func() {
+			_, created, err = GetCircuit("foo")
+			So(err, ShouldBeNil)
+			So(created, ShouldEqual, false)
+		})
+
+		Convey("get after remove, the circuit should be created", func() {
+			RemoveCircuit("foo")
+			_, created, err = GetCircuit("foo")
+			So(err, ShouldBeNil)
+			So(created, ShouldEqual, true)
 		})
 	})
 }
